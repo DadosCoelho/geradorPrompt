@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
+import sys
 
 def get_folder_contents(folder_path, ignore_items):
     """Obtém informações sobre pastas, arquivos e seus conteúdos com caminhos relativos, ignorando itens especificados."""
@@ -192,9 +193,13 @@ class FolderContentApp:
         # Gera o conteúdo
         content = get_folder_contents(folder_path, ignore_items)
         
-        # Abre diálogo de "Salvar como"
+        # Obtém a pasta pai da pasta selecionada
+        parent_dir = os.path.dirname(folder_path)
+        
+        # Abre diálogo de "Salvar como" iniciando na pasta pai
         default_filename = f"{os.path.basename(folder_path)}.txt"
         output_file = filedialog.asksaveasfilename(
+            initialdir=parent_dir,  # Inicia na pasta pai
             initialfile=default_filename,
             defaultextension=".txt",
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
