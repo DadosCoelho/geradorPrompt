@@ -1,226 +1,425 @@
 import os
 import tkinter as tk
-from tkinter import filedialog, messagebox
-from tkinter import ttk
-import sys
-
-def get_folder_contents(folder_path, ignore_items):
-    """Obtém informações sobre pastas, arquivos e seus conteúdos com caminhos relativos, ignorando itens especificados."""
-    output = []
-    
-    # Verifica se o caminho existe e é uma pasta
-    if not os.path.isdir(folder_path):
-        return ["Erro: O caminho especificado não é uma pasta válida."]
-    
-    # Obtém o nome da pasta principal
-    folder_name = os.path.basename(folder_path)
-    
-    # Adiciona o nome da pasta principal com o prefixo //
-    output.append(f"// {folder_name}")
-    
-    # Percorre a estrutura de diretórios
-    for root, dirs, files in os.walk(folder_path):
-        # Calcula o caminho relativo a partir da pasta base
-        rel_path = os.path.relpath(root, os.path.dirname(folder_path))
-        if rel_path == ".":
-            rel_path = folder_name
-        
-        # Remove pastas ignoradas da lista de diretórios a serem processados
-        dirs[:] = [d for d in dirs if os.path.basename(os.path.join(root, d)) not in ignore_items]
-        
-        # Adiciona subpastas com caminho relativo
-        for dir_name in sorted(dirs):
-            dir_rel_path = os.path.join(rel_path, dir_name).replace(os.sep, '/')
-            output.append(f"// {dir_rel_path}/")
-        
-        # Adiciona arquivos e seus conteúdos com caminho relativo, exceto os ignorados
-        for file_name in sorted(files):
-            if file_name in ignore_items:
-                continue
-            file_rel_path = os.path.join(rel_path, file_name).replace(os.sep, '/')
-            output.append(f"// {file_rel_path}")
-            
-            file_path = os.path.join(root, file_name)
-            try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    content = file.read()
-                    output.append(f"  // Conteúdo:")
-                    output.append(f"  {content.replace('\n', '\n  ')}")
-            except Exception as e:
-                output.append(f"  // Erro ao ler o arquivo: {str(e)}")
-            output.append("")  # Linha em branco após cada arquivo
-    
-    return output
-
-def save_to_txt(content, output_path):
-    """Salva o conteúdo em um arquivo .txt."""
-    try:
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write("\n".join(content))
-        return True, f"Arquivo gerado com sucesso: {output_path}"
-    except Exception as e:
-        return False, f"Erro ao salvar o arquivo: {str(e)}"
+from tkinter import ttk, filedialog, messagebox
 
 class FolderContentApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Gerador de Conteúdo de Pastas")
-        self.root.geometry("700x500")
+        self.root.geometry("900x700")
         
-        # Lista para armazenar Checkbuttons e seus estados
-        self.check_vars = {}
-        self.items = []
-        
-        # Frame principal
-        self.main_frame = ttk.Frame(self.root, padding="10")
-        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Campo e botão para selecionar a pasta
+        # Conjunto para armazenar itens selecionados
+        self.selected_items = set()
         self.folder_path = tk.StringVar()
-        ttk.Label(self.main_frame, text="Pasta a analisar:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.folder_entry = ttk.Entry(self.main_frame, textvariable=self.folder_path, width=60)
-        self.folder_entry.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
-        ttk.Button(self.main_frame, text="Selecionar Pasta", command=self.select_folder).grid(row=1, column=1, padx=5)
         
-        # Frame para a lista com rolagem
-        ttk.Label(self.main_frame, text="Marque as caixas para IGNORAR pastas e arquivos:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        self.list_frame = ttk.Frame(self.main_frame)
-        self.list_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Frame superior para seleção de pasta
+        top_frame = ttk.Frame(root, padding=10)
+        top_frame.pack(fill=tk.X)
         
-        # Canvas e Scrollbar para rolagem
-        self.canvas = tk.Canvas(self.list_frame)
-        self.scrollbar = ttk.Scrollbar(self.list_frame, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas)
+        ttk.Label(top_frame, text="Pasta selecionada:").pack(anchor=tk.W)
+        entry_frame = ttk.Frame(top_frame)
+        entry_frame.pack(fill=tk.X, pady=(5, 0))
         
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
+        ttk.Entry(entry_frame, textvariable=self.folder_path, width=70).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(entry_frame, text="Selecionar Pasta", command=self.select_folder).pack(side=tk.LEFT, padx=(5, 0))
         
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        # Frame para instruções
+        instruction_frame = ttk.Frame(root, padding=(10, 0, 10, 10))
+        instruction_frame.pack(fill=tk.X)
         
-        self.canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        ttk.Label(instruction_frame, text="Marque as pastas e arquivos que deseja INCLUIR no relatório:", 
+                 font=('TkDefaultFont', 9, 'bold')).pack(anchor=tk.W)
+        ttk.Label(instruction_frame, text="• Clique nos itens para marcar/desmarcar", 
+                 font=('TkDefaultFont', 8)).pack(anchor=tk.W, padx=(10, 0))
+        ttk.Label(instruction_frame, text="• Marcar uma pasta inclui todo seu conteúdo", 
+                 font=('TkDefaultFont', 8)).pack(anchor=tk.W, padx=(10, 0))
         
-        # Botão para gerar o arquivo
-        ttk.Button(self.main_frame, text="Gerar Arquivo .txt", command=self.generate_file).grid(row=4, column=0, columnspan=2, pady=10)
+        # Frame para TreeView com scrollbar
+        tree_frame = ttk.Frame(root)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10)
         
-        # Área de status
-        self.status_label = ttk.Label(self.main_frame, text="")
-        self.status_label.grid(row=5, column=0, columnspan=2, pady=5)
+        # Criar TreeView com scrollbars
+        self.tree = ttk.Treeview(tree_frame, selectmode='none')
         
-        # Configurar redimensionamento
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        self.main_frame.columnconfigure(0, weight=1)
-        self.main_frame.rowconfigure(3, weight=1)
-        self.list_frame.columnconfigure(0, weight=1)
-        self.list_frame.rowconfigure(0, weight=1)
+        # Scrollbars
+        v_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        h_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
         
-        self.folder_selected = False
-    
+        self.tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        
+        # Layout das scrollbars e treeview
+        self.tree.grid(row=0, column=0, sticky='nsew')
+        v_scrollbar.grid(row=0, column=1, sticky='ns')
+        h_scrollbar.grid(row=1, column=0, sticky='ew')
+        
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        
+        self.tree.heading("#0", text="Estrutura de Pastas e Arquivos (clique para marcar/desmarcar)")
+        
+        # Bind events
+        self.tree.bind("<<TreeviewOpen>>", self.on_open)
+        self.tree.bind("<Button-1>", self.on_click)
+        
+        # Frame inferior com controles
+        bottom_frame = ttk.Frame(root, padding=10)
+        bottom_frame.pack(fill=tk.X)
+        
+        # Frame para controles de seleção
+        control_frame = ttk.Frame(bottom_frame)
+        control_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.select_all_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(control_frame, text="Selecionar Tudo", 
+                       variable=self.select_all_var, command=self.toggle_all).pack(side=tk.LEFT)
+        
+        ttk.Button(control_frame, text="Expandir Tudo", command=self.expand_all).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(control_frame, text="Recolher Tudo", command=self.collapse_all).pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Botão de gerar arquivo
+        ttk.Button(control_frame, text="Gerar Arquivo .txt", 
+                  command=self.generate_file, style='Accent.TButton').pack(side=tk.RIGHT)
+        
+        # Label de status
+        self.status_label = ttk.Label(bottom_frame, text="Selecione uma pasta para começar", 
+                                     font=('TkDefaultFont', 8))
+        self.status_label.pack(fill=tk.X)
+        
+        # Variável para controlar expansão automática
+        self.auto_expanding = False
+
     def select_folder(self):
-        """Abre um diálogo para selecionar a pasta e lista seus conteúdos."""
+        """Seleciona uma pasta e carrega sua estrutura na TreeView"""
         folder = filedialog.askdirectory()
-        if folder:
-            self.folder_path.set(folder)
-            self.status_label.config(text="Pasta selecionada: " + folder)
-            self.folder_selected = True
-            self.populate_list(folder)
-    
-    def populate_list(self, folder):
-        """Popula a lista com Checkbuttons para pastas e arquivos."""
-        # Limpa a lista anterior
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
-        self.check_vars.clear()
-        self.items = []
+        if not folder:
+            return
         
-        # Lista pastas e arquivos do primeiro nível
+        self.folder_path.set(folder)
+        self.tree.delete(*self.tree.get_children())
+        self.selected_items.clear()
+        self.select_all_var.set(False)
+        
+        # Criar nó raiz
+        root_name = os.path.basename(folder)
+        root_node = self.tree.insert("", "end", text=f"☐ {root_name}", 
+                                    open=False, values=[folder, "folder"])
+        
+        # Adicionar placeholder para permitir expansão
+        self.tree.insert(root_node, "end", text="Carregando...", values=["DUMMY"])
+        
+        self.update_status(f"Pasta carregada: {folder}")
+
+    def on_open(self, event):
+        """Evento quando um nó é expandido"""
+        if self.auto_expanding:
+            return
+            
+        node = self.tree.focus()
+        if not node:
+            return
+            
+        values = self.tree.item(node, "values")
+        if not values or len(values) < 1:
+            return
+            
+        path = values[0]
+        
+        # Verificar se já foi carregado (tem apenas o placeholder)
+        children = self.tree.get_children(node)
+        if len(children) == 1:
+            child_values = self.tree.item(children[0], "values")
+            if child_values and child_values[0] == "DUMMY":
+                self.tree.delete(children[0])
+                self.populate_node(node, path)
+
+    def populate_node(self, parent_node, path):
+        """Popula um nó com seus filhos (pastas e arquivos)"""
         try:
-            items = os.listdir(folder)
-            self.items = sorted(items)
-            for i, item in enumerate(self.items):
-                item_path = os.path.join(folder, item)
-                size = ""
-                if os.path.isfile(item_path):
-                    size = f"{os.path.getsize(item_path) / 1024:.2f} KB"
+            if not os.path.isdir(path):
+                return
+                
+            entries = []
+            # Listar conteúdo da pasta
+            for entry in os.listdir(path):
+                full_path = os.path.join(path, entry)
+                if os.path.isdir(full_path):
+                    entries.append((entry, full_path, "folder"))
                 else:
-                    size = "[Pasta]"
+                    # Adicionar informação de tamanho para arquivos
+                    try:
+                        size = os.path.getsize(full_path)
+                        size_str = self.format_size(size)
+                        entries.append((f"{entry} ({size_str})", full_path, "file"))
+                    except:
+                        entries.append((entry, full_path, "file"))
+            
+            # Ordenar: pastas primeiro, depois arquivos
+            entries.sort(key=lambda x: (x[2] == "file", x[0].lower()))
+            
+            for display_name, full_path, item_type in entries:
+                node = self.tree.insert(parent_node, "end", 
+                                      text=f"☐ {display_name}", 
+                                      values=[full_path, item_type])
                 
-                # Cria variável para o Checkbutton
-                var = tk.BooleanVar(value=False)
-                self.check_vars[item] = var
-                
-                # Cria frame para alinhar Checkbutton e Label
-                item_frame = ttk.Frame(self.scrollable_frame)
-                item_frame.grid(row=i, column=0, sticky=tk.W, pady=2)
-                
-                # Checkbutton
-                ttk.Checkbutton(item_frame, variable=var).grid(row=0, column=0, padx=5)
-                
-                # Label com nome e tamanho
-                ttk.Label(item_frame, text=f"{item} ({size})").grid(row=0, column=1, sticky=tk.W)
+                # Se for pasta, adicionar placeholder para permitir expansão
+                if item_type == "folder":
+                    self.tree.insert(node, "end", text="Carregando...", values=["DUMMY"])
+                    
+        except PermissionError:
+            self.tree.insert(parent_node, "end", 
+                           text="❌ Acesso negado", 
+                           values=[])
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao listar conteúdos: {str(e)}")
-            self.folder_selected = False
-    
-    def reset_form(self):
-        """Reseta todas as informações preenchidas."""
-        self.folder_path.set("")
-        self.folder_selected = False
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
-        self.check_vars.clear()
-        self.items = []
-        self.status_label.config(text="")
-    
+            self.tree.insert(parent_node, "end", 
+                           text=f"❌ Erro: {str(e)}", 
+                           values=[])
+
+    def format_size(self, size_bytes):
+        """Formata o tamanho do arquivo em uma string legível"""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+
+    def on_click(self, event):
+        """Evento de clique na TreeView"""
+        region = self.tree.identify("region", event.x, event.y)
+        if region != "tree":
+            return
+        
+        node = self.tree.identify_row(event.y)
+        if not node:
+            return
+        
+        values = self.tree.item(node, "values")
+        if not values or values[0] == "DUMMY":
+            return
+            
+        path = values[0]
+        text = self.tree.item(node, "text")
+        
+        if text.startswith("☐"):
+            # Marcar item
+            self.tree.item(node, text=f"☑ {text[2:]}")
+            self.selected_items.add(path)
+            self.mark_children(node, True)
+        elif text.startswith("☑"):
+            # Desmarcar item
+            self.tree.item(node, text=f"☐ {text[2:]}")
+            self.selected_items.discard(path)
+            self.mark_children(node, False)
+        
+        self.update_selection_count()
+
+    def mark_children(self, node, select):
+        """Marca/desmarca todos os filhos de um nó recursivamente"""
+        # Primeiro, garantir que o nó esteja expandido se tiver filhos
+        if select and not self.tree.item(node, "open"):
+            children = self.tree.get_children(node)
+            if children:
+                child_values = self.tree.item(children[0], "values")
+                if child_values and child_values[0] == "DUMMY":
+                    # Expandir automaticamente
+                    self.auto_expanding = True
+                    self.tree.item(node, open=True)
+                    self.auto_expanding = False
+        
+        for child in self.tree.get_children(node):
+            values = self.tree.item(child, "values")
+            if not values or values[0] == "DUMMY":
+                continue
+                
+            path = values[0]
+            text = self.tree.item(child, "text")
+            
+            if select:
+                if text.startswith("☐"):
+                    self.tree.item(child, text=f"☑ {text[2:]}")
+                self.selected_items.add(path)
+            else:
+                if text.startswith("☑"):
+                    self.tree.item(child, text=f"☐ {text[2:]}")
+                self.selected_items.discard(path)
+            
+            # Recursão para filhos
+            self.mark_children(child, select)
+
+    def toggle_all(self):
+        """Marca/desmarca todos os itens"""
+        select_all = self.select_all_var.get()
+        
+        for root_node in self.tree.get_children():
+            values = self.tree.item(root_node, "values")
+            if not values or values[0] == "DUMMY":
+                continue
+                
+            path = values[0]
+            text = self.tree.item(root_node, "text")
+            
+            if select_all:
+                if text.startswith("☐"):
+                    self.tree.item(root_node, text=f"☑ {text[2:]}")
+                self.selected_items.add(path)
+            else:
+                if text.startswith("☑"):
+                    self.tree.item(root_node, text=f"☐ {text[2:]}")
+                self.selected_items.discard(path)
+            
+            self.mark_children(root_node, select_all)
+        
+        self.update_selection_count()
+
+    def expand_all(self):
+        """Expande todos os nós da árvore"""
+        def expand_node(node):
+            self.tree.item(node, open=True)
+            for child in self.tree.get_children(node):
+                expand_node(child)
+        
+        for root_node in self.tree.get_children():
+            expand_node(root_node)
+
+    def collapse_all(self):
+        """Recolhe todos os nós da árvore"""
+        def collapse_node(node):
+            self.tree.item(node, open=False)
+            for child in self.tree.get_children(node):
+                collapse_node(child)
+        
+        for root_node in self.tree.get_children():
+            collapse_node(root_node)
+
+    def update_selection_count(self):
+        """Atualiza o contador de itens selecionados"""
+        count = len(self.selected_items)
+        if count == 0:
+            self.update_status("Nenhum item selecionado")
+        else:
+            self.update_status(f"{count} item(s) selecionado(s)")
+
+    def update_status(self, message):
+        """Atualiza a mensagem de status"""
+        self.status_label.config(text=message)
+
     def generate_file(self):
-        """Gera o arquivo .txt com base nas entradas."""
-        if not self.folder_selected:
-            messagebox.showerror("Erro", "Por favor, selecione uma pasta.")
+        """Gera o arquivo .txt com o conteúdo selecionado"""
+        if not self.selected_items:
+            messagebox.showwarning("Aviso", "Nenhum item foi selecionado.\nMarque as pastas e arquivos que deseja incluir no relatório.")
             return
         
-        folder_path = self.folder_path.get().strip()
-        if not folder_path:
-            messagebox.showerror("Erro", "Por favor, selecione uma pasta.")
+        root_path = self.folder_path.get()
+        if not root_path:
+            messagebox.showerror("Erro", "Nenhuma pasta foi selecionada.")
             return
         
-        # Obtém itens a ignorar (Checkbuttons marcados)
-        ignore_items = [item for item, var in self.check_vars.items() if var.get()]
+        # Gerar conteúdo do arquivo
+        lines = []
+        processed_paths = set()
         
-        # Gera o conteúdo
-        content = get_folder_contents(folder_path, ignore_items)
+        # Ordenar itens selecionados por caminho
+        sorted_items = sorted(self.selected_items)
         
-        # Obtém a pasta pai da pasta selecionada
-        parent_dir = os.path.dirname(folder_path)
+        for item_path in sorted_items:
+            if not os.path.exists(item_path) or item_path in processed_paths:
+                continue
+            
+            # Calcular caminho relativo
+            rel_path = os.path.relpath(item_path, os.path.dirname(root_path)).replace(os.sep, '/')
+            
+            if os.path.isdir(item_path):
+                lines.append(f"// {rel_path}/")
+                processed_paths.add(item_path)
+                
+                # Se a pasta foi selecionada, incluir todo seu conteúdo
+                self.add_folder_contents(item_path, lines, processed_paths, os.path.dirname(root_path))
+            else:
+                lines.append(f"// {rel_path}")
+                try:
+                    with open(item_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        lines.append("  // Conteúdo:")
+                        if content.strip():
+                            indented_content = content.replace('\n', '\n  ')
+                            lines.append(f"  {indented_content}")
+                        else:
+                            lines.append("  [Arquivo vazio]")
+                except Exception as e:
+                    lines.append(f"  // Erro ao ler o arquivo: {e}")
+                lines.append("")  # Linha em branco após cada arquivo
+                processed_paths.add(item_path)
         
-        # Abre diálogo de "Salvar como" iniciando na pasta pai
-        default_filename = f"{os.path.basename(folder_path)}.txt"
-        output_file = filedialog.asksaveasfilename(
-            initialdir=parent_dir,  # Inicia na pasta pai
-            initialfile=default_filename,
+        # Salvar arquivo
+        default_name = f"{os.path.basename(root_path)}_conteudo.txt"
+        file_path = filedialog.asksaveasfilename(
             defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+            filetypes=[("Arquivos de Texto", "*.txt"), ("Todos os Arquivos", "*.*")],
+            initialfile=default_name,
+            initialdir=os.path.dirname(root_path)
         )
         
-        # Verifica se o usuário cancelou o diálogo
-        if not output_file:
-            messagebox.showerror("Erro", "Nenhum arquivo selecionado para salvar.")
+        if not file_path:
             return
         
-        # Salva o conteúdo
-        success, message = save_to_txt(content, output_file)
-        self.status_label.config(text=message)
-        if success:
-            messagebox.showinfo("Sucesso", message)
-            self.reset_form()  # Reseta o formulário após salvar com sucesso
-        else:
-            messagebox.showerror("Erro", message)
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+            
+            messagebox.showinfo("Sucesso", f"Arquivo gerado com sucesso!\n\nLocal: {file_path}\nItens incluídos: {len(processed_paths)}")
+            self.update_status(f"Arquivo salvo: {os.path.basename(file_path)} ({len(processed_paths)} itens)")
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao salvar o arquivo:\n{e}")
+            self.update_status(f"Erro ao salvar: {e}")
+
+    def add_folder_contents(self, folder_path, lines, processed_paths, base_path):
+        """Adiciona recursivamente o conteúdo de uma pasta às linhas do arquivo"""
+        try:
+            for root, dirs, files in os.walk(folder_path):
+                # Ordenar diretórios e arquivos
+                dirs.sort()
+                files.sort()
+                
+                # Adicionar arquivos
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    if file_path in processed_paths:
+                        continue
+                    
+                    rel_path = os.path.relpath(file_path, base_path).replace(os.sep, '/')
+                    lines.append(f"// {rel_path}")
+                    
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            lines.append("  // Conteúdo:")
+                            if content.strip():
+                                indented_content = content.replace('\n', '\n  ')
+                                lines.append(f"  {indented_content}")
+                            else:
+                                lines.append("  [Arquivo vazio]")
+                    except Exception as e:
+                        lines.append(f"  // Erro ao ler o arquivo: {e}")
+                    
+                    lines.append("")  # Linha em branco após cada arquivo
+                    processed_paths.add(file_path)
+                
+        except Exception as e:
+            lines.append(f"// Erro ao processar pasta {folder_path}: {e}")
 
 def main():
     root = tk.Tk()
+    
+    # Configurar estilo se disponível
+    try:
+        style = ttk.Style()
+        style.theme_use('clam')
+    except:
+        pass
+    
     app = FolderContentApp(root)
     root.mainloop()
 
