@@ -127,7 +127,9 @@ O arquivo gerado seria:
 ## Estrutura do Projeto
 - `folder_content_generator.py`: Script principal com interface gráfica e lógica da aplicação
 - `start.bat`: Script auxiliar para Windows (verifica Python e inicia o programa)
-- `README.md`: Este arquivo com instruções detalhadas
+- `README.markdown`: Este arquivo com instruções detalhadas
+- `icon.ico`: Ícone opcional usado pela aplicação
+- `LICENSE.txt`: Arquivo de licença (MIT)
 
 ## Vantagens da Nova Versão
 
