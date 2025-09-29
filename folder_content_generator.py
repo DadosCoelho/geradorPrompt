@@ -506,7 +506,7 @@ class ModernFolderContentApp:
             self.tree.item(node, open=not current_state)
 
     def toggle_selection(self, node):
-        """Alterna seleção de um nó"""
+        """Alterna seleção de um nó com propagação hierárquica"""
         values = self.tree.item(node, "values")
         if not values or values[0] == "DUMMY":
             return
@@ -520,14 +520,61 @@ class ModernFolderContentApp:
             self.tree.item(node, text=new_text)
             self.selected_items.add(path)
             self.mark_children(node, True)
+
+            # 🔥 NOVO: Atualizar nós pais também ao marcar
+            self.update_parent_selection(node)
+
         elif text.startswith("☑️"):
             # Desmarcar
             new_text = text.replace("☑️", "☐", 1)
             self.tree.item(node, text=new_text)
             self.selected_items.discard(path)
             self.mark_children(node, False)
+
+            # Atualizar nós pais quando um item é desmarcado
+            self.update_parent_selection(node)
+
         
         self.update_selection_display()
+
+    def update_parent_selection(self, node):
+        """Atualiza o estado de seleção dos nós pais baseado nos filhos"""
+        parent = self.tree.parent(node)
+        if not parent:
+            return
+
+        parent_values = self.tree.item(parent, "values")
+        if not parent_values or parent_values[0] == "DUMMY":
+            return
+
+        # Verificar se todos os filhos estão selecionados
+        all_children_selected = True
+        any_child_selected = False
+        for child in self.tree.get_children(parent):
+            child_values = self.tree.item(child, "values")
+            if child_values and child_values[0] != "DUMMY":
+                child_path = child_values[0]
+                if child_path in self.selected_items:
+                    any_child_selected = True
+                else:
+                    all_children_selected = False
+
+        parent_path = parent_values[0]
+        parent_text = self.tree.item(parent, "text")
+
+        # Caso todos os filhos estejam selecionados → marca o pai
+        if all_children_selected and parent_text.startswith("☐"):
+            new_text = parent_text.replace("☐", "☑️", 1)
+            self.tree.item(parent, text=new_text)
+            self.selected_items.add(parent_path)
+            self.update_parent_selection(parent)
+
+        # Caso nenhum ou só alguns filhos estejam selecionados → desmarca o pai
+        elif not all_children_selected and parent_text.startswith("☑️"):
+            new_text = parent_text.replace("☑️", "☐", 1)
+            self.tree.item(parent, text=new_text)
+            self.selected_items.discard(parent_path)
+            self.update_parent_selection(parent)
 
     def mark_children(self, node, select):
         """Marca/desmarca filhos recursivamente"""
